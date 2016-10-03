@@ -1,0 +1,11 @@
+[package]
+name = "eden-server"
+version = "0.1.0"
+authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
+
+[dependencies]
+ws = "*"
+jsonwebtoken = "*"
+log4rs = { version = "*", features = ["yaml"] }
+log = "*"
+docopt_macros = "*"
