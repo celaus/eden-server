@@ -1,39 +1,62 @@
-extern crate ws;
-
-use ws::{listen, Handler, Sender, Handshake, Result, Message, CloseCode};
-
 #[macro_use]
 extern crate log;
 extern crate log4rs;
+extern crate toml;
 
-struct Server {
-    out: Sender,
+
+use std::io;
+use std::io::Read;
+use std::sync::Arc;
+use std::fs::File;
+use toml::{Parser, Value};
+use std::any::Any;
+use std::net::SocketAddr;
+
+mod handler;
+mod server;
+use server::{EdenConfig, EdenServer, Router, WebServer};
+use handler::{RouteProvider, TemperaturePressureHandler};
+
+
+
+fn read_config<T: Read + Sized>(mut f: T) -> Result<EdenConfig, io::Error> {
+    let mut buffer = String::new();
+    try!(f.read_to_string(&mut buffer));
+    let root: Value = buffer.parse().unwrap();
+    let secret = root.lookup("keys.secret").unwrap_or(&Value::String("asdf".to_owned())).as_str().unwrap().to_owned();
+    let port = root.lookup("settings.port").unwrap_or(&Value::Integer(6200)).as_integer().unwrap() as u16;
+
+    let raw_addr = root.lookup("settings.listen_address").unwrap_or(&Value::String("0.0.0.0".to_owned())).as_str().unwrap().to_owned();
+    let ip:SocketAddr = format!("{}:{}", raw_addr, port).parse().unwrap();
+    return Ok(EdenConfig { listen_address: ip, secret: secret});
 }
 
-impl Handler for Server {
-    fn on_message(&mut self, msg: Message) -> Result<()> {
-        // Echo the message back
-        self.out.send(msg)
-    }
-
-    fn on_close(&mut self, code: CloseCode, reason: &str) {
-        // The WebSocket protocol allows for a utf8 reason for the closing state after the
-        // close code. WS-RS will attempt to interpret this data as a utf8 description of the
-        // reason for closing the connection. I many cases, `reason` will be an empty string.
-        // So, you may not normally want to display `reason` to the user,
-        // but let's assume that we know that `reason` is human-readable.
-        match code {
-            CloseCode::Normal => println!("The client is done with the connection."),
-            CloseCode::Away => println!("The client is leaving the site."),
-            _ => println!("The client encountered an error: {}", reason),
-        }
-    }
-}
 
 fn main() {
     let logging_filename = "logging.yml";
     log4rs::init_file(logging_filename, Default::default()).unwrap();
+    info!("Loading configuration");
+
+    let mut f = File::open("./config.toml").unwrap();
+    let config = read_config(&mut f).unwrap();
+
     info!("Starting Eden");
-    // Now, instead of a closure, the Factory returns a new instance of our Handler.
-    listen("127.0.0.1:3012", |out| Server { out: out }).unwrap()
+
+    let mut router = Router::new();
+    let tp = TemperaturePressureHandler::new("temperature");
+    router.add_route(tp.get_route().to_owned(), tp);
+
+    //
+    //router.add_route("hello/again".to_string(), |_: &mut Request| {
+    //   Ok(Response::with((status::Ok, "Hello again !")))
+    //});
+    //
+    //router.add_route("error".to_string(), |_: &mut Request| {
+    //   Ok(Response::with(status::BadRequest))
+    //});
+
+
+
+    let srv = EdenServer::new(config, router);
+    srv.listen();
 }

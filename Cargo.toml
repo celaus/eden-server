@@ -3,9 +3,19 @@ name = "eden-server"
 version = "0.1.0"
 authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
 
+[features]
+default = []
+dev = ["clippy"]
+
+
 [dependencies]
-ws = "*"
-jsonwebtoken = "*"
+simple_jwt = "*"
+iron = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+clippy = {version = "*", optional = true}
 log4rs = { version = "*", features = ["yaml"] }
 log = "*"
 docopt_macros = "*"
+toml = "*"

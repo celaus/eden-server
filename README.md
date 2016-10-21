@@ -1,2 +1,4 @@
-# eden-server
-Server component for Eden.
+# Eden [Server]
+Server component for [Eden](https://github.com/celaus/eden).
+
+Eden is a system to collect IoT data via a websocket connection.
