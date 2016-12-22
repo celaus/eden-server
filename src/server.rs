@@ -1,14 +1,16 @@
 extern crate iron;
 
-
 use std::net::SocketAddr;
 
 use self::iron::prelude::*;
 use self::iron::status;
 use self::iron::{Handler};
-use handler::{RouteProvider};
 use std::collections::HashMap;
 
+
+pub trait RouteProvider {
+    fn get_route(&self) -> &str;
+}
 
 
 pub struct Router {
@@ -28,7 +30,8 @@ impl Router {
 
 impl Handler for Router {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
-        match self.routes.get(&req.url.path().join("/")) {
+        let path = req.url.path().join("/");
+        match self.routes.get(&path) {
             Some(handler) => handler.handle(req),
             None => Ok(Response::with(status::NotFound))
         }
@@ -47,7 +50,8 @@ pub struct EdenServer {
 
 pub struct EdenConfig {
     pub listen_address: SocketAddr,
-    pub secret: String
+    pub secret: String,
+    pub cratedb_url: String
 }
 
 
@@ -63,6 +67,7 @@ impl EdenServer {
 
 impl WebServer for EdenServer {
     fn listen(self) {
+        info!("Listening to {}", self.listen_address);
         Iron::new(self.router).http(self.listen_address).unwrap();
     }
 }

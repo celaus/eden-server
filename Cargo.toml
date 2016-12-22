@@ -11,11 +11,15 @@ dev = ["clippy"]
 [dependencies]
 simple_jwt = "*"
 iron = "*"
+chrono = "*"
+bodyparser = {git = "https://github.com/iron/body-parser.git"}
+persistent = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
 clippy = {version = "*", optional = true}
-log4rs = { version = "*", features = ["yaml"] }
+log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
 docopt_macros = "*"
 toml = "*"
+cratedb = { git = "https://github.com/celaus/rust-cratedb" }
