@@ -1,110 +1,62 @@
+// Copyright 2016 Claus Matzinger
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 extern crate iron;
 extern crate bodyparser;
-extern crate persistent;
-extern crate simple_jwt;
 
 
-use error::{StringError, AuthenticationError};
+use error::StringError;
 use self::iron::prelude::*;
 use self::iron::status;
 use self::iron::method::*;
 use self::iron::Handler;
-use self::iron::middleware::{Chain, BeforeMiddleware};
-use self::iron::headers::{Bearer, Authorization};
-use std::error::Error;
-use std::fmt::{self, Debug};
 use server::RouteProvider;
-use self::simple_jwt::{decode, Algorithm};
 use std::sync::mpsc::Sender;
-use std::sync::Mutex;
-use dto::TemperaturePressureReading;
-use self::persistent::Read;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use auth::AuthenticatedAgent;
 
-trait JWTAuthenticator {
-    fn authenticate(&self, token: &String) -> Result<(), AuthenticationError>;
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub meta: MetaData,
+    pub data: Vec<Measurement>,
+    pub timestamp: i64,
 }
 
-
-pub struct JWTAuthenticationMiddleware {
-    acls: Arc<Vec<ACL>>,
-    secret: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Measurement {
+    pub sensor: String,
+    pub value: f64,
+    pub unit: String,
 }
 
-impl JWTAuthenticationMiddleware {
-    pub fn new(secret: String, acls: Vec<ACL>) -> JWTAuthenticationMiddleware {
-        JWTAuthenticationMiddleware {
-            acls: Arc::new(acls),
-            secret: secret,
-        }
-    }
-
-    ///
-    /// Adds the middleware (self) before the endpoint passed into the function.
-    /// returns a usable chain of handlers
-    /// * endpoint: H A handler instance that is run after this middleware
-    ///
-    pub fn add_before<H>(self, endpoint: H) -> Chain where H: Handler {
-        let mut chain = Chain::new(endpoint);
-        chain.link_before(self);
-        chain
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaData {
+    pub name: String,
 }
 
-impl BeforeMiddleware for JWTAuthenticationMiddleware {
-    fn before(&self, req: &mut Request) -> IronResult<()> {
-        if let Some(bearer) = req.headers.get::<Authorization<Bearer>>() {
-            match self.authenticate(&bearer.token) {
-                Ok(_) => Ok(()),
-                _ => Err(IronError::new(AuthenticationError {}, status::Unauthorized)),
-            }
-        } else {
-            Err(IronError::new(AuthenticationError {}, status::Unauthorized))
-        }
-    }
-    fn catch(&self, _: &mut Request, err: IronError) -> IronResult<()> {
-        Err(IronError::new(StringError { description: "error".to_owned() }, status::BadRequest))
-    }
-}
-
-impl JWTAuthenticator for JWTAuthenticationMiddleware {
-    fn authenticate(&self, token: &String) -> Result<(), AuthenticationError> {
-        let claim = decode(&token, &self.secret).map_err(|e| AuthenticationError {})?;
-        let role = claim.payload
-            .get("roles")
-            .ok_or(AuthenticationError {})?
-            .as_str()
-            .ok_or(AuthenticationError {})?
-            .to_owned();
-        let issuer_json = claim.registered.iss.ok_or(AuthenticationError {})?;
-        let issuer = issuer_json.as_str();
-        let v = self.acls
-            .iter()
-            .filter(|acl| acl.client_id == issuer)
-            .filter(|acl| acl.roles.contains(&role));
-        if v.count() > 0 {
-            Ok(())
-        } else {
-            Err(AuthenticationError {})
-        }
-    }
-}
-
-pub struct ACL {
-    client_id: String,
-    roles: Vec<String>,
-}
 
 pub struct TemperaturePressureHandler {
     route: String,
-    sender: Mutex<Sender<TemperaturePressureReading>>,
+    sender: Mutex<Sender<(Arc<AuthenticatedAgent>, Message)>>,
 }
 
 
 impl TemperaturePressureHandler {
     pub fn new(route: &str,
-               sender: Sender<TemperaturePressureReading>)
+               sender: Sender<(Arc<AuthenticatedAgent>, Message)>)
                -> TemperaturePressureHandler {
         TemperaturePressureHandler {
             route: route.to_owned(),
@@ -123,22 +75,32 @@ impl RouteProvider for TemperaturePressureHandler {
 impl Handler for TemperaturePressureHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         match req.method {
-            Method::Put => {
-                let json_body = req.get::<bodyparser::Struct<TemperaturePressureReading>>();
-                if let Ok(body) = json_body {
-                    if let Some(content) = body {
-                        self.sender.lock().unwrap().send(content);
-                        return Ok(Response::with((status::Ok, "")));
+            Method::Put | Method::Post => {
+                let json_body = req.get::<bodyparser::Struct<Vec<Message>>>();
+                debug!("Received: {:?}", json_body);
+                match json_body {
+                    Ok(Some(content)) => {
+                        let agent =
+                            Arc::new(req.extensions.remove::<AuthenticatedAgent>().unwrap());
+                        info!("Received {} messages from {:?}", content.len(), agent);
+
+                        for msg in content {
+                            let _ = self.sender.lock().unwrap().send((agent.clone(), msg));
+                        }
+                        Ok(Response::with((status::Ok, "[\"Done\"]")))
+                    }
+                    Ok(None) | Err(_) => {
+                        info!("JSON body could not be parsed.");
+                        Err(IronError::new(StringError { description: "invalid body".to_string() },
+                                           status::BadRequest))
                     }
                 }
-                Ok(Response::with((status::BadRequest, "")))
             }
             _ => {
+                info!("Method not allowed");
                 Err(IronError::new(StringError { description: "Error".to_string() },
                                    status::MethodNotAllowed))
             }
-
         }
-
     }
 }

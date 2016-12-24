@@ -1,0 +1,16 @@
+[Unit]
+Description=Eden IoT Server
+Documentation=https://github.com/celaus/eden-server
+After=network.target
+
+[Service]
+Type=simple
+User=eden
+Group=eden
+WorkingDirectory=/opt/eden-server
+ExecStart=/opt/eden-server/target/release/eden-server
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

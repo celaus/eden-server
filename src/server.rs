@@ -1,11 +1,13 @@
 extern crate iron;
 
-use std::net::SocketAddr;
-
 use self::iron::prelude::*;
 use self::iron::status;
-use self::iron::{Handler};
+use self::iron::Handler;
+use self::iron::Iron;
 use std::collections::HashMap;
+use std::net::ToSocketAddrs;
+use std::fmt::Debug;
+
 
 
 pub trait RouteProvider {
@@ -15,7 +17,7 @@ pub trait RouteProvider {
 
 pub struct Router {
     // Routes here are simply matched with the url path.
-    routes: HashMap<String, Box<Handler>>
+    routes: HashMap<String, Box<Handler>>,
 }
 
 impl Router {
@@ -23,7 +25,9 @@ impl Router {
         Router { routes: HashMap::new() }
     }
 
-    pub fn add_route<H>(&mut self, route: String, handler: H) where H: Handler {
+    pub fn add_route<H>(&mut self, route: String, handler: H)
+        where H: Handler
+    {
         self.routes.insert(route, Box::new(handler));
     }
 }
@@ -33,41 +37,29 @@ impl Handler for Router {
         let path = req.url.path().join("/");
         match self.routes.get(&path) {
             Some(handler) => handler.handle(req),
-            None => Ok(Response::with(status::NotFound))
+            None => Ok(Response::with(status::NotFound)),
         }
     }
 }
 
 pub trait WebServer {
-    fn listen(self);
+    fn listen<A: ToSocketAddrs + Debug>(self, listen_to: A);
 }
 
 pub struct EdenServer {
-    listen_address: SocketAddr,
-    secret: String,
     router: Router,
-}
-
-pub struct EdenConfig {
-    pub listen_address: SocketAddr,
-    pub secret: String,
-    pub cratedb_url: String
 }
 
 
 impl EdenServer {
-    pub fn new(config: EdenConfig, router: Router) -> EdenServer {
-        EdenServer {
-            listen_address: config.listen_address,
-            secret: config.secret,
-            router: router,
-        }
+    pub fn new(router: Router) -> EdenServer {
+        EdenServer { router: router }
     }
 }
 
 impl WebServer for EdenServer {
-    fn listen(self) {
-        info!("Listening to {}", self.listen_address);
-        Iron::new(self.router).http(self.listen_address).unwrap();
+    fn listen<A: ToSocketAddrs + Debug>(self, listen_to: A) {
+        info!("Listening to {:?}", listen_to);
+        Iron::new(self.router).http(listen_to).unwrap();
     }
 }
