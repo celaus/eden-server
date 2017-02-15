@@ -1,95 +1,99 @@
-#![feature(proc_macro)]
-
 #[macro_use]
 extern crate log;
 extern crate log4rs;
-extern crate toml;
 extern crate cratedb;
 
 #[macro_use]
 extern crate serde_derive;
+extern crate clap;
 
-
-use std::io;
-use std::io::Read;
 use std::fs::File;
-use toml::{Parser, Value};
-use std::any::Any;
-use std::net::SocketAddr;
 use std::sync::mpsc::channel;
 
 mod handler;
 mod server;
 mod error;
 mod consumer;
-mod dto;
+mod auth;
+mod config;
+mod datasink;
 
-use server::{RouteProvider, EdenConfig, EdenServer, Router, WebServer};
-use handler::{TemperaturePressureHandler, JWTAuthenticationMiddleware};
-use dto::TemperaturePressureReading;
-use consumer::{CrateDBSink, TemperaturePressureDataSink};
+use config::read_config;
+use auth::{AuthenticatedAgent, acl_from_conf, JWTAuthenticationMiddleware};
+use server::{RouteProvider, EdenServer, Router, WebServer};
+use handler::{Message, TemperaturePressureHandler};
+use consumer::SensorDataSink;
+use datasink::CrateDBSink;
 use cratedb::Cluster;
 use std::thread;
-
-fn read_config<T: Read + Sized>(mut f: T) -> Result<EdenConfig, io::Error> {
-    let mut buffer = String::new();
-    try!(f.read_to_string(&mut buffer));
-    let root: Value = buffer.parse().unwrap();
-    let secret = root.lookup("keys.secret")
-        .unwrap_or(&Value::String("asdf".to_owned()))
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let port =
-        root.lookup("settings.port").unwrap_or(&Value::Integer(6200)).as_integer().unwrap() as u16;
-
-    let raw_addr = root.lookup("settings.listen_address")
-        .unwrap_or(&Value::String("0.0.0.0".to_owned()))
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let ip: SocketAddr = format!("{}:{}", raw_addr, port).parse().unwrap();
-
-    let cratedb_url = root.lookup("settings.cratedb_url")
-        .unwrap_or(&Value::String("localhost:4200".to_owned()))
-        .as_str()
-        .unwrap()
-        .to_owned();
-
-    return Ok(EdenConfig {
-        listen_address: ip,
-        secret: secret,
-        cratedb_url: cratedb_url.to_owned(),
-    });
-}
+use clap::{Arg, App};
+use std::sync::Arc;
 
 
 fn main() {
-    let logging_filename = "logging.yml";
+    let matches = App::new("Eden Server")
+        .version("0.2.0")
+        .author("Claus Matzinger. <claus.matzinger+kb@gmail.com>")
+        .about("Receives Eden Client data, authenticates via JWT, and pushes it to a CrateDB \
+                cluster")
+        .arg(Arg::with_name("config")
+            .short("c")
+            .long("config")
+            .help("Sets a custom config file [default: config.toml]")
+            .value_name("config.toml")
+            .takes_value(true))
+        .arg(Arg::with_name("logging")
+            .short("l")
+            .long("logging-conf")
+            .value_name("logging.yml")
+            .takes_value(true)
+            .help("Sets the logging configuration [default: logging.yml]"))
+        .get_matches();
+
+    let config_filename = matches.value_of("config").unwrap_or("config.toml");
+    let logging_filename = matches.value_of("logging").unwrap_or("logging.yml");
+    info!("Using configuration file '{}' and logging config '{}'",
+          config_filename,
+          logging_filename);
+
     log4rs::init_file(logging_filename, Default::default()).unwrap();
-    info!("Loading configuration");
-
-    let mut f = File::open("./config.toml").unwrap();
-    let config = read_config(&mut f).unwrap();
+    let mut f = File::open(config_filename).unwrap();
+    let settings = read_config(&mut f).unwrap();
 
 
-    let (tx, rx) = channel::<TemperaturePressureReading>();
+    let (tx, rx) = channel::<(Arc<AuthenticatedAgent>, Message)>();
 
     info!("Starting Eden Server");
+
     let mut router = Router::new();
     let tp = TemperaturePressureHandler::new("temperature", tx);
-    let mw = JWTAuthenticationMiddleware::new("secret".to_owned(), vec![]);
+
+
+    let acls = settings.acls
+        .into_iter()
+        .map(|acl| acl_from_conf(acl))
+        .collect();
+
+    let mw = JWTAuthenticationMiddleware::new(settings.keys.secret.clone(), acls);
     let temperature_route = tp.get_route().to_owned();
     let handlers = mw.add_before(tp);
 
     router.add_route(temperature_route, handlers);
-    let cratedb_url = config.cratedb_url.clone();
-    let consumer = TemperaturePressureDataSink::new(1000);
-    thread::spawn(move || {
-        let mut c: Cluster = Cluster::from_string(cratedb_url).unwrap();
-        consumer.relay(rx, c);
+    let cratedb_url = settings.cratedb.url.clone();
+    let consumer = SensorDataSink::new();
+    let bulk_size = settings.cratedb.bulk_size;
+
+    let insert_thread = thread::spawn(move || {
+        let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
+        consumer.relay(rx, c, bulk_size);
     });
 
-    let srv = EdenServer::new(config, router);
-    srv.listen();
+    let srv = EdenServer::new(router);
+
+    // call blocking handler
+    let addr: &str = &settings.http.listen_address;
+    srv.listen(addr);
+
+    // insert all data from the queue
+    let _ = insert_thread.join();
 }
