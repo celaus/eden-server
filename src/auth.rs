@@ -1,16 +1,34 @@
-extern crate simple_jwt;
+extern crate medallion;
 extern crate iron;
 
+use self::medallion::{DefaultHeader, Token};
+use self::medallion::error::Error;
 use error::{StringError, AuthenticationError};
 use self::iron::prelude::*;
 use self::iron::status;
 use self::iron::typemap;
-use self::simple_jwt::decode;
 use std::sync::Arc;
 use self::iron::Handler;
 use self::iron::middleware::{Chain, BeforeMiddleware};
 use self::iron::headers::{Bearer, Authorization};
 use config::ACLConf;
+
+#[derive(Default, Serialize, Deserialize)]
+struct Claims {
+    iss: String,
+    role: String,
+}
+
+
+fn verify(token: &str, secret: &str) -> Result<Claims, Error> {
+    let token = Token::<DefaultHeader, Claims>::parse(token).unwrap();
+
+    match token.verify(secret.as_bytes()) {
+        Ok(_) => Ok(token.claims),
+        Err(e) => Err(e),
+    }
+}
+
 
 pub struct ACL {
     client_id: String,
@@ -52,6 +70,14 @@ impl JWTAuthenticationMiddleware {
         }
     }
 
+    fn acl_ok(&self, claims: &Claims) -> bool {
+        self.acls
+            .iter()
+            .filter(|acl| acl.client_id == claims.iss)
+            .filter(|acl| acl.roles.contains(&claims.role))
+            .count() > 0
+    }
+
     ///
     /// Adds the middleware (self) before the endpoint passed into the function.
     /// returns a usable chain of handlers
@@ -74,7 +100,7 @@ impl BeforeMiddleware for JWTAuthenticationMiddleware {
                 Ok(agent) => {
                     req.extensions.insert::<AuthenticatedAgent>(agent);
                     Ok(())
-                },
+                }
                 _ => Err(IronError::new(AuthenticationError {}, status::Unauthorized)),
             }
         } else {
@@ -91,29 +117,18 @@ impl BeforeMiddleware for JWTAuthenticationMiddleware {
 
 impl JWTAuthenticator for JWTAuthenticationMiddleware {
     fn authenticate(&self, token: &str) -> Result<AuthenticatedAgent, AuthenticationError> {
-        let claim = decode(token, &self.secret).map_err(|_| AuthenticationError {})?;
-        let role = claim.payload
-            .get("role")
-            .ok_or(AuthenticationError {})?
-            .as_str()
-            .ok_or(AuthenticationError {})?
-            .to_owned();
-        let issuer_json = claim.registered.iss.ok_or(AuthenticationError {})?;
-        let issuer = issuer_json.as_str();
-
-        debug!("issuer:{}, roles: {}", issuer, role);
-        let v = self.acls
-            .iter()
-            .filter(|acl| acl.client_id == issuer)
-            .filter(|acl| acl.roles.contains(&role));
-        if v.count() > 0 {
-            Ok(AuthenticatedAgent {
-                name: issuer.to_owned(),
-                role: role.to_string(),
-            })
-        } else {
-            debug!("Access denied for issuer: {} ({})", issuer, role);
-            Err(AuthenticationError {})
+        match verify(token, &self.secret) {
+            Ok(ref claims) if self.acl_ok(&claims) => {
+                debug!("issuer:{}, roles: {}", claims.iss, claims.role);
+                Ok(AuthenticatedAgent {
+                    name: claims.iss.clone(),
+                    role: claims.role.clone(),
+                })
+            }
+            Ok(_) | Err(_) => Err(AuthenticationError {}),
         }
+
+
+
     }
 }

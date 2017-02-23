@@ -7,7 +7,7 @@ authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
 default = []
 
 [dependencies]
-simple_jwt = "*"
+medallion = "^1.1"
 serde = "^0.9.6"
 serde_derive = "^0.9.6"
 serde_json = "^0.9.6"

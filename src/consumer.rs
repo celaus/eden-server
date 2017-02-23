@@ -3,7 +3,6 @@ extern crate cratedb;
 extern crate serde;
 extern crate serde_json;
 
-use self::serde::ser::{Serialize, Serializer};
 use self::cratedb::{Nothing, Cluster};
 use datasink::CrateDBSink;
 use std::sync::mpsc::Receiver;
