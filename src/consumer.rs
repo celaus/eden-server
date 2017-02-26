@@ -19,7 +19,6 @@ struct SensorData {
     unit: String,
 }
 
-
 #[derive(Serialize)]
 struct DeviceData {
     name: String,
@@ -29,6 +28,8 @@ struct DeviceData {
 
 
 pub struct SensorDataSink {
+    init_statement: String,
+    insert_statement: String,
 }
 
 
@@ -36,19 +37,25 @@ impl SensorDataSink {
     ///
     /// Create a new data sink to relay data towards a sink.
     ///
-    pub fn new() -> SensorDataSink {
-        SensorDataSink {}
+    pub fn new<C, I>(init_statement: C, insert_statement: I) -> SensorDataSink
+        where I: Into<String>,
+              C: Into<String>
+    {
+        SensorDataSink {
+            init_statement: init_statement.into(),
+            insert_statement: insert_statement.into(),
+        }
     }
 }
 
 impl CrateDBSink for SensorDataSink {
-    fn init(&self) -> String {
-        "create table if not exists sensors.tp2(ts timestamp, data object, meta object, \
-         month as date_trunc('month', ts)) partitioned by (month)"
-            .to_string()
+
+    fn init(&self) -> &str {
+        &self.init_statement
     }
-    fn insert(&self) -> String {
-        "insert into sensors.tp2(ts, data, meta) values(?,?,?)".to_string()
+
+    fn insert(&self) -> &str {
+        &self.insert_statement
     }
 
 
@@ -56,8 +63,9 @@ impl CrateDBSink for SensorDataSink {
              data_channel: Receiver<(Arc<AuthenticatedAgent>, Message)>,
              cluster: Cluster,
              batch_size: usize) {
+
         if let Err(e) = cluster.query(self.init(), None::<Box<Nothing>>) {
-            panic!("{:?}", e);
+            warn!("Could not execute CREATE statement: {}", e);
         }
         let max_timeout = Duration::from_secs(90);
 

@@ -40,6 +40,8 @@ pub struct Http {
 pub struct CrateDb {
     pub url: String,
     pub bulk_size: usize,
+    pub create_statement: String,
+    pub insert_statement: String
 }
 
 #[derive(Deserialize)]

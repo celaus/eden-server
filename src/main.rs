@@ -80,7 +80,8 @@ fn main() {
 
     router.add_route(temperature_route, handlers);
     let cratedb_url = settings.cratedb.url.clone();
-    let consumer = SensorDataSink::new();
+    let consumer = SensorDataSink::new(settings.cratedb.create_statement,
+                                       settings.cratedb.insert_statement);
     let bulk_size = settings.cratedb.bulk_size;
 
     let insert_thread = thread::spawn(move || {

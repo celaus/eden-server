@@ -7,6 +7,8 @@ listen_address = "0.0.0.0:6200"
 [cratedb]
 url = "http://localhost:4200"
 bulk_size = 1000
+create_statement = "create table if not exists sensors.tp2(ts timestamp, data object, meta object, month as date_trunc('month', ts)) partitioned by (month)"
+insert_statement = "insert into sensors.tp2(ts, data, meta) values(?,?,?)"
 
 [[acls]]
 name = "Raspberry 1"

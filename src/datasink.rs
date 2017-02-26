@@ -12,12 +12,12 @@ pub trait CrateDBSink {
     ///
     /// Generates an insert statement.
     ///
-    fn insert(&self) -> String;
+    fn insert(&self) -> &str;
 
     ///
     /// Generate the initialize statement.
     ///
-    fn init(&self) -> String;
+    fn init(&self) -> &str;
 
     ///
     /// Send messages from the input channel to the cluster.
