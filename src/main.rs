@@ -52,14 +52,14 @@ fn main() {
 
     let config_filename = matches.value_of("config").unwrap_or("config.toml");
     let logging_filename = matches.value_of("logging").unwrap_or("logging.yml");
+    log4rs::init_file(logging_filename, Default::default()).unwrap();
+
     info!("Using configuration file '{}' and logging config '{}'",
           config_filename,
           logging_filename);
 
-    log4rs::init_file(logging_filename, Default::default()).unwrap();
     let mut f = File::open(config_filename).unwrap();
     let settings = read_config(&mut f).unwrap();
-
 
     let (tx, rx) = channel::<(Arc<AuthenticatedAgent>, Message)>();
 
