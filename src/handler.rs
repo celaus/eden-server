@@ -48,31 +48,31 @@ pub struct MetaData {
 }
 
 
-pub struct TemperaturePressureHandler {
+pub struct SensorDataHandler {
     route: String,
     sender: Mutex<Sender<(Arc<AuthenticatedAgent>, Message)>>,
 }
 
 
-impl TemperaturePressureHandler {
+impl SensorDataHandler {
     pub fn new(route: &str,
                sender: Sender<(Arc<AuthenticatedAgent>, Message)>)
-               -> TemperaturePressureHandler {
-        TemperaturePressureHandler {
+               -> SensorDataHandler {
+        SensorDataHandler {
             route: route.to_owned(),
             sender: Mutex::new(sender),
         }
     }
 }
 
-impl RouteProvider for TemperaturePressureHandler {
+impl RouteProvider for SensorDataHandler {
     fn get_route(&self) -> &str {
         &self.route
     }
 }
 
 
-impl Handler for TemperaturePressureHandler {
+impl Handler for SensorDataHandler {
     fn handle(&self, req: &mut Request) -> IronResult<Response> {
         match req.method {
             Method::Put | Method::Post => {

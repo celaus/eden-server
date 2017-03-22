@@ -21,12 +21,13 @@ mod datasink;
 use config::read_config;
 use auth::{AuthenticatedAgent, acl_from_conf, JWTAuthenticationMiddleware};
 use server::{RouteProvider, EdenServer, Router, WebServer};
-use handler::{Message, TemperaturePressureHandler};
+use handler::{Message, SensorDataHandler};
 use consumer::SensorDataSink;
 use datasink::CrateDBSink;
 use cratedb::Cluster;
 use std::thread;
 use clap::{Arg, App};
+use std::time::Duration;
 use std::sync::Arc;
 
 
@@ -66,7 +67,7 @@ fn main() {
     info!("Starting Eden Server");
 
     let mut router = Router::new();
-    let tp = TemperaturePressureHandler::new("temperature", tx);
+    let tp = SensorDataHandler::new("data", tx);
 
 
     let acls = settings.acls
@@ -83,10 +84,11 @@ fn main() {
     let consumer = SensorDataSink::new(settings.cratedb.create_statement,
                                        settings.cratedb.insert_statement);
     let bulk_size = settings.cratedb.bulk_size;
+    let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
+    let max_timeout = Duration::from_secs(90);
 
     let insert_thread = thread::spawn(move || {
-        let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
-        consumer.relay(rx, c, bulk_size);
+        consumer.relay(rx, c, bulk_size, max_timeout);
     });
 
     let srv = EdenServer::new(router);
