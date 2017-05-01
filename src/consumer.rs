@@ -6,16 +6,18 @@ extern crate serde_json;
 use self::cratedb::{Nothing, Cluster};
 use datasink::CrateDBSink;
 use std::sync::mpsc::Receiver;
-use handler::Message;
+use handler::{Message, Measurement};
 use std::time::Duration;
 use std::borrow::Cow;
 use auth::AuthenticatedAgent;
 use std::sync::Arc;
 use std::collections::BTreeMap;
+use self::serde_json::Value;
+
 
 #[derive(Serialize)]
 struct SensorData {
-    value: f64,
+    value: Value,
     unit: String,
 }
 
@@ -75,11 +77,29 @@ impl CrateDBSink for SensorDataSink {
                     let mut sensor_data = BTreeMap::new();
 
                     for d in msg.data {
-                        sensor_data.insert(d.sensor,
-                                           SensorData {
-                                               value: d.value,
-                                               unit: d.unit,
-                                           });
+                        match d {
+                            Measurement::Simple { name, value, unit } => {
+                                sensor_data.insert(name,
+                                                   SensorData {
+                                                       value: json!(value),
+                                                       unit: unit,
+                                                   });
+                            }
+                            Measurement::Tuple { name, value, unit } => {
+                                sensor_data.insert(name,
+                                                   SensorData {
+                                                       value: json!(value),
+                                                       unit: unit,
+                                                   });
+                            }
+                            Measurement::Geometry { name, value, unit } => {
+                                sensor_data.insert(name,
+                                                   SensorData {
+                                                       value: json!(value),
+                                                       unit: unit,
+                                                   });
+                            }
+                        };
                     }
 
                     let meta = DeviceData {

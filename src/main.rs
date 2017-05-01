@@ -5,6 +5,8 @@ extern crate cratedb;
 
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 extern crate clap;
 
 use std::fs::File;

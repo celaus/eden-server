@@ -7,16 +7,16 @@ authors = ["Claus Matzinger <claus.matzinger+kb@gmail.com>"]
 default = []
 
 [dependencies]
-medallion = "^1.1"
-serde = "^0.9.6"
-serde_derive = "^0.9.6"
-serde_json = "^0.9.6"
+jsonwebtoken = "^2"
+serde = "^1"
+serde_derive = "^1"
+serde_json = "^1"
 iron = "^0.5.1"
 chrono = "*"
 bodyparser = {git = "https://github.com/iron/body-parser.git"}
 persistent = "*"
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
-toml = "0.3.0"
-cratedb = "^0.2.0"
+toml = "^0.4.0"
+cratedb = "^0.3.0"
 clap = "*"

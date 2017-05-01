@@ -15,7 +15,6 @@
 extern crate iron;
 extern crate bodyparser;
 
-
 use error::StringError;
 use self::iron::prelude::*;
 use self::iron::status;
@@ -25,7 +24,7 @@ use server::RouteProvider;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use auth::AuthenticatedAgent;
-
+use std::io::Read;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,10 +35,32 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Measurement {
-    pub sensor: String,
-    pub value: f64,
-    pub unit: String,
+pub enum Geometry {
+    Rectangle {
+        x: u64,
+        y: u64,
+        w: u64,
+        h: u64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Measurement {
+    Simple {
+        name: String,
+        value: f64,
+        unit: String,
+    },
+    Tuple {
+        name: String,
+        value: Vec<f64>,
+        unit: String,
+    },
+    Geometry {
+        name: String,
+        value: Vec<Geometry>,
+        unit: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,7 +98,12 @@ impl Handler for SensorDataHandler {
         match req.method {
             Method::Put | Method::Post => {
                 let json_body = req.get::<bodyparser::Struct<Vec<Message>>>();
-                debug!("Received: {:?}", json_body);
+
+                debug!("Received: {}", {
+                    let mut s: String = String::new();
+                    let _ = req.body.read_to_string(&mut s);
+                    s
+                });
                 match json_body {
                     Ok(Some(content)) => {
                         let agent =
@@ -87,7 +113,7 @@ impl Handler for SensorDataHandler {
                         for msg in content {
                             let _ = self.sender.lock().unwrap().send((agent.clone(), msg));
                         }
-                        Ok(Response::with((status::Ok, "[\"Done\"]")))
+                        Ok(Response::with(status::Ok))
                     }
                     Ok(None) | Err(_) => {
                         info!("JSON body could not be parsed.");

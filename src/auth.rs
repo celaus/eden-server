@@ -1,8 +1,9 @@
-extern crate medallion;
+extern crate jsonwebtoken as jwt;
 extern crate iron;
 
-use self::medallion::{DefaultHeader, Token};
-use self::medallion::error::Error;
+use std::default::Default;
+use self::jwt::{decode, Validation};
+use self::jwt::errors::Error;
 use error::{StringError, AuthenticationError};
 use self::iron::prelude::*;
 use self::iron::status;
@@ -13,18 +14,15 @@ use self::iron::middleware::{Chain, BeforeMiddleware};
 use self::iron::headers::{Bearer, Authorization};
 use config::ACLConf;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(PartialEq, Default, Serialize, Deserialize)]
 struct Claims {
     iss: String,
     role: String,
 }
 
-
 fn verify(token: &str, secret: &str) -> Result<Claims, Error> {
-    let token = Token::<DefaultHeader, Claims>::parse(token).unwrap();
-
-    match token.verify(secret.as_bytes()) {
-        Ok(_) => Ok(token.claims),
+    match decode::<Claims>(token, secret.as_bytes(), &Validation::default()) {
+        Ok(claims) => Ok(claims.claims),
         Err(e) => Err(e),
     }
 }
