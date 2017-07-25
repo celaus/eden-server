@@ -22,6 +22,7 @@ use std::io::Read;
 pub struct Settings {
     pub keys: Keys,
     pub http: Http,
+    pub mqtt: MQTT,
     pub cratedb: CrateDb,
     pub acls: Vec<ACLConf>,
 }
@@ -33,15 +34,25 @@ pub struct Keys {
 
 #[derive(Deserialize)]
 pub struct Http {
+    pub enable: bool,
     pub listen_address: String,
 }
+#[derive(Deserialize)]
+pub struct MQTT {
+    pub broker_address: String,
+    pub username: String,
+    pub password: String,
+    pub verify_ca: bool,
+    pub topics: Vec<String>,
+}
+
 
 #[derive(Deserialize)]
 pub struct CrateDb {
     pub url: String,
     pub bulk_size: usize,
     pub create_statement: String,
-    pub insert_statement: String
+    pub insert_statement: String,
 }
 
 #[derive(Deserialize)]

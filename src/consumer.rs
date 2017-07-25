@@ -4,6 +4,7 @@ extern crate serde;
 extern crate serde_json;
 
 use self::cratedb::{Nothing, Cluster};
+use self::cratedb::sql::QueryRunner;
 use datasink::CrateDBSink;
 use std::sync::mpsc::Receiver;
 use handler::{Message, Measurement};

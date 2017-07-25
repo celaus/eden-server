@@ -18,5 +18,6 @@ persistent = "*"
 log4rs = { version = "*", features = ["serde_yaml"] }
 log = "*"
 toml = "^0.4.0"
-cratedb = "^0.3.0"
+cratedb = "^1"
 clap = "*"
+rumqtt  = "0.10.0"
