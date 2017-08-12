@@ -14,7 +14,10 @@ pub trait RouteProvider {
     fn get_route(&self) -> &str;
 }
 
-
+///
+/// A simple request router for (iron)[https://iron.rs],
+/// based on a HashMap.
+///
 pub struct Router {
     // Routes here are simply matched with the url path.
     routes: HashMap<String, Box<Handler>>,
@@ -42,10 +45,19 @@ impl Handler for Router {
     }
 }
 
+
+///
+/// An interface for running a web server.
+///
 pub trait WebServer {
+    ///
+    /// Start listening on the provided address. Should be Blocking.
+    ///
     fn listen<A: ToSocketAddrs + Debug>(self, listen_to: A);
 }
 
+///
+/// A wrapper for iron's WebServer.
 pub struct EdenServer {
     router: Router,
 }

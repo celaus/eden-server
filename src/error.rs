@@ -21,7 +21,12 @@ use std::io;
 #[derive(Debug)]
 pub enum ConfigError {
     Io(io::Error),
-    Parse(toml::de::Error)
+    Parse(toml::de::Error),
+}
+
+#[derive(Debug)]
+pub enum ProcessingError {
+    Other(StringError),
 }
 
 #[derive(Debug)]

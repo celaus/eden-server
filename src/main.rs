@@ -5,6 +5,8 @@ extern crate cratedb;
 
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 extern crate clap;
 
 use std::fs::File;
@@ -17,18 +19,20 @@ mod consumer;
 mod auth;
 mod config;
 mod datasink;
+mod subscription;
 
 use config::read_config;
 use auth::{AuthenticatedAgent, acl_from_conf, JWTAuthenticationMiddleware};
 use server::{RouteProvider, EdenServer, Router, WebServer};
-use handler::{Message, TemperaturePressureHandler};
+use handler::{Message, SensorDataHandler};
 use consumer::SensorDataSink;
 use datasink::CrateDBSink;
 use cratedb::Cluster;
 use std::thread;
 use clap::{Arg, App};
+use std::time::Duration;
 use std::sync::Arc;
-
+use subscription::MqttSubscription;
 
 fn main() {
     let matches = App::new("Eden Server")
@@ -37,17 +41,17 @@ fn main() {
         .about("Receives Eden Client data, authenticates via JWT, and pushes it to a CrateDB \
                 cluster")
         .arg(Arg::with_name("config")
-            .short("c")
-            .long("config")
-            .help("Sets a custom config file [default: config.toml]")
-            .value_name("config.toml")
-            .takes_value(true))
+                 .short("c")
+                 .long("config")
+                 .help("Sets a custom config file [default: config.toml]")
+                 .value_name("config.toml")
+                 .takes_value(true))
         .arg(Arg::with_name("logging")
-            .short("l")
-            .long("logging-conf")
-            .value_name("logging.yml")
-            .takes_value(true)
-            .help("Sets the logging configuration [default: logging.yml]"))
+                 .short("l")
+                 .long("logging-conf")
+                 .value_name("logging.yml")
+                 .takes_value(true)
+                 .help("Sets the logging configuration [default: logging.yml]"))
         .get_matches();
 
     let config_filename = matches.value_of("config").unwrap_or("config.toml");
@@ -66,10 +70,11 @@ fn main() {
     info!("Starting Eden Server");
 
     let mut router = Router::new();
-    let tp = TemperaturePressureHandler::new("temperature", tx);
+    let tp = SensorDataHandler::new("data", tx.clone());
 
 
-    let acls = settings.acls
+    let acls = settings
+        .acls
         .into_iter()
         .map(|acl| acl_from_conf(acl))
         .collect();
@@ -79,21 +84,29 @@ fn main() {
     let handlers = mw.add_before(tp);
 
     router.add_route(temperature_route, handlers);
+
+    let mut subscription = MqttSubscription::new(settings.mqtt.topics,
+                                                 settings.mqtt.username,
+                                                 settings.mqtt.password,
+                                                 settings.mqtt.broker_address,
+                                                 settings.mqtt.verify_ca);
+
     let cratedb_url = settings.cratedb.url.clone();
     let consumer = SensorDataSink::new(settings.cratedb.create_statement,
-                                       settings.cratedb.insert_statement);
+                                       settings.cratedb.insert_statement,
+                                       settings.cratedb.blob_table_name);
     let bulk_size = settings.cratedb.bulk_size;
+    let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
+    let max_timeout = Duration::from_secs(90);
 
-    let insert_thread = thread::spawn(move || {
-        let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
-        consumer.relay(rx, c, bulk_size);
-    });
+    let insert_thread = thread::spawn(move || { consumer.relay(rx, c, bulk_size, max_timeout); });
 
     let srv = EdenServer::new(router);
-
-    // call blocking handler
     let addr: &str = &settings.http.listen_address;
-    srv.listen(addr);
+    subscription.start(tx); // start subscription to broker
+    // call blocking handler
+    //srv.listen(addr);
+    thread::sleep(Duration::from_secs(1000));
 
     // insert all data from the queue
     let _ = insert_thread.join();
