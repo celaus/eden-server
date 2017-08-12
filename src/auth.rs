@@ -40,7 +40,7 @@ pub fn acl_from_conf(conf: ACLConf) -> ACL {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AuthenticatedAgent {
     pub name: String,
     pub role: String,
@@ -119,9 +119,9 @@ impl JWTAuthenticator for JWTAuthenticationMiddleware {
             Ok(ref claims) if self.acl_ok(&claims) => {
                 debug!("issuer:{}, roles: {}", claims.iss, claims.role);
                 Ok(AuthenticatedAgent {
-                    name: claims.iss.clone(),
-                    role: claims.role.clone(),
-                })
+                       name: claims.iss.clone(),
+                       role: claims.role.clone(),
+                   })
             }
             Ok(_) | Err(_) => Err(AuthenticationError {}),
         }

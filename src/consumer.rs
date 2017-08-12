@@ -2,9 +2,11 @@
 extern crate cratedb;
 extern crate serde;
 extern crate serde_json;
+extern crate hex;
 
 use self::cratedb::{Nothing, Cluster};
 use self::cratedb::sql::QueryRunner;
+use self::cratedb::blob::BlobContainer;
 use datasink::CrateDBSink;
 use std::sync::mpsc::Receiver;
 use handler::{Message, Measurement};
@@ -14,6 +16,8 @@ use auth::AuthenticatedAgent;
 use std::sync::Arc;
 use std::collections::BTreeMap;
 use self::serde_json::Value;
+use std::io::Cursor;
+use self::hex::ToHex;
 
 
 #[derive(Serialize)]
@@ -33,22 +37,29 @@ struct DeviceData {
 pub struct SensorDataSink {
     init_statement: String,
     insert_statement: String,
+    table_name: String,
 }
 
 
 impl SensorDataSink {
-    pub fn new<C, I>(init_statement: C, insert_statement: I) -> SensorDataSink
+    pub fn new<C, I, T>(init_statement: C, insert_statement: I, table_name: T) -> SensorDataSink
         where I: Into<String>,
-              C: Into<String>
+              C: Into<String>,
+              T: Into<String>
     {
         SensorDataSink {
             init_statement: init_statement.into(),
             insert_statement: insert_statement.into(),
+            table_name: table_name.into(),
         }
     }
 }
 
 impl CrateDBSink for SensorDataSink {
+    fn table(&self) -> &str {
+        &self.table_name
+    }
+
     fn init(&self) -> &str {
         &self.init_statement
     }
@@ -85,6 +96,16 @@ impl CrateDBSink for SensorDataSink {
                                                        value: json!(value),
                                                        unit: unit,
                                                    });
+                            }
+                            Measurement::Binary { name, value, unit } => {
+                                let mut blob = Cursor::new(value);
+                                if let Ok(b) = sink.put(self.table_name.clone(), &mut blob) {
+                                    sensor_data.insert(name,
+                                                       SensorData {
+                                                           value: json!(b.sha1.to_hex()),
+                                                           unit: unit,
+                                                       });
+                                }
                             }
                             Measurement::Tuple { name, value, unit } => {
                                 sensor_data.insert(name,

@@ -17,6 +17,11 @@ pub trait CrateDBSink {
     fn insert(&self) -> &str;
 
     ///
+    /// Table name.
+    ///
+    fn table(&self) -> &str;
+
+    ///
     /// Generate the initialize statement.
     ///
     fn init(&self) -> &str;

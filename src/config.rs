@@ -46,12 +46,13 @@ pub struct MQTT {
     pub topics: Vec<String>,
 }
 
-
 #[derive(Deserialize)]
 pub struct CrateDb {
     pub url: String,
     pub bulk_size: usize,
     pub create_statement: String,
+    pub blob_table_name: String,
+    pub blob_create_statement: String,
     pub insert_statement: String,
 }
 

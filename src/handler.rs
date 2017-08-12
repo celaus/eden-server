@@ -36,12 +36,7 @@ pub struct Message {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Geometry {
-    Rectangle {
-        x: u64,
-        y: u64,
-        w: u64,
-        h: u64,
-    },
+    Rectangle { x: u64, y: u64, w: u64, h: u64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +44,11 @@ pub enum Measurement {
     Simple {
         name: String,
         value: f64,
+        unit: String,
+    },
+    Binary {
+        name: String,
+        value: Vec<u8>,
         unit: String,
     },
     Tuple {
@@ -66,6 +66,7 @@ pub enum Measurement {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetaData {
     pub name: String,
+    pub role: Option<String>,
 }
 
 

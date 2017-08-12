@@ -85,15 +85,16 @@ fn main() {
 
     router.add_route(temperature_route, handlers);
 
-    let subscription = MqttSubscription::new(settings.mqtt.topics,
-                                             settings.mqtt.username,
-                                             settings.mqtt.password,
-                                             settings.mqtt.broker_address,
-                                             settings.mqtt.verify_ca);
+    let mut subscription = MqttSubscription::new(settings.mqtt.topics,
+                                                 settings.mqtt.username,
+                                                 settings.mqtt.password,
+                                                 settings.mqtt.broker_address,
+                                                 settings.mqtt.verify_ca);
 
     let cratedb_url = settings.cratedb.url.clone();
     let consumer = SensorDataSink::new(settings.cratedb.create_statement,
-                                       settings.cratedb.insert_statement);
+                                       settings.cratedb.insert_statement,
+                                       settings.cratedb.blob_table_name);
     let bulk_size = settings.cratedb.bulk_size;
     let c: Cluster = Cluster::from_string(cratedb_url).unwrap();
     let max_timeout = Duration::from_secs(90);
@@ -104,7 +105,8 @@ fn main() {
     let addr: &str = &settings.http.listen_address;
     subscription.start(tx); // start subscription to broker
     // call blocking handler
-    srv.listen(addr);
+    //srv.listen(addr);
+    thread::sleep(Duration::from_secs(1000));
 
     // insert all data from the queue
     let _ = insert_thread.join();

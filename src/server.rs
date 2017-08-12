@@ -14,8 +14,6 @@ pub trait RouteProvider {
     fn get_route(&self) -> &str;
 }
 
-
-
 ///
 /// A simple request router for (iron)[https://iron.rs],
 /// based on a HashMap.

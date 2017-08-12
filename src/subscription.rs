@@ -26,6 +26,7 @@ use self::rumqtt::{Message as MqttMessage, MqttOptions, MqttClient, MqttCallback
 pub struct MqttSubscription {
     topics: Vec<String>,
     options: MqttOptions,
+    client: Option<MqttClient>,
 }
 
 
@@ -54,30 +55,39 @@ impl MqttSubscription {
         MqttSubscription {
             topics: topics.into_iter().map(|t| t.into()).collect(),
             options: options,
+            client: None,
         }
     }
 
-    pub fn start(self, sender: Sender<(Arc<AuthenticatedAgent>, Message)>) {
+    pub fn start(&mut self, sender: Sender<(Arc<AuthenticatedAgent>, Message)>) {
+
         let sender = Mutex::new(sender);
-        let msg_callback = MqttCallback::new()
-            .on_message(move |m: MqttMessage| if let Some(userdata_raw) = m.userdata {
-                            let userdata = String::from_utf8_lossy(&userdata_raw);
-                            let data = String::from_utf8_lossy(&m.payload);
-                            let readings_raw: Result<Vec<Message>, _> = serde_json::from_str(&data);
-                            if let Ok(readings) = readings_raw {
-                                let agent = Arc::new(AuthenticatedAgent {
-                                                         name: userdata.to_string(),
-                                                         role: userdata.to_string(),
-                                                     });
-                                for msg in readings {
-                                    let _ = sender.lock().unwrap().send((agent.clone(), msg));
-                                }
-                            }
-                        });
-        let mut request = MqttClient::start(self.options, Some(msg_callback)).unwrap();
+        let msg_callback = MqttCallback::new().on_message(move |m: MqttMessage| {
+            debug!("Received Message {:?}", m);
+            let data = String::from_utf8_lossy(&m.payload);
+            let readings_raw: Result<Vec<Message>, _> = serde_json::from_str(&data);
+            if let Ok(readings) = readings_raw {
+                info!("Found {} readings in message", readings.len());
+                for msg in readings {
+                    let agent =
+                        Arc::new(AuthenticatedAgent {
+                                     name: msg.meta.name.clone(),
+                                     role: msg.meta.role.clone().unwrap_or("None".to_string()),
+                                 });
+                    let _ = sender.lock().unwrap().send((agent, msg));
+                }
+            } else {
+                info!("Could not parse Message: {:?}", readings_raw.unwrap_err());
+            }
+        });
+        let mut request = MqttClient::start(self.options.clone(), Some(msg_callback)).unwrap();
+        info!("Subscribing to topics: {:?}", self.topics);
+
         let _ = request.subscribe(self.topics
                                       .iter()
-                                      .map(|t| (t.as_ref(), QoS::Level1))
+                                      .map(|t| (t.as_ref(), QoS::Level2))
                                       .collect());
+
+        self.client = Some(request);
     }
 }
